@@ -40,11 +40,12 @@ async def _stream_worker(
     extra_headers: dict | list[tuple[str, str]] | None = None,):
     while not stop_event.is_set():
         try:
+            # Use additional_headers instead of extra_headers for Python 3.12+ compatibility
             async with websockets.connect(
                 url, 
                 ping_interval=20,
                 ping_timeout=20,
-                extra_headers=extra_headers
+                additional_headers=extra_headers
             ) as ws:
                 print(f"✅ connected to {url}")
                 async for raw in ws:
