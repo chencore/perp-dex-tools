@@ -393,6 +393,174 @@ async def debug_markets(symbol: str = "ETH", limit: int = 10):
             "matching_samples": matching[:5]
         }
 
+def format_report(data: dict) -> str:
+    """Format analysis data into a readable report."""
+    lines = []
+    
+    # Header
+    symbol = data.get("symbol", "")
+    timestamp = data.get("timestamp", "")
+    today_only = data.get("today_only", False)
+    
+    lines.append("=" * 60)
+    lines.append(f"📊 {symbol} 预测市场分析报告")
+    if today_only:
+        lines.append("📅 仅今日数据")
+    lines.append(f"⏰ 分析时间: {timestamp}")
+    lines.append("=" * 60)
+    lines.append("")
+    
+    # Single timeframe analysis
+    if "analysis" in data:
+        analysis = data["analysis"]
+        timeframe = data.get("timeframe", "")
+        
+        lines.append(f"🎯 时间周期: {timeframe.upper()}")
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("核心结论")
+        lines.append("=" * 60)
+        
+        direction = analysis.get("direction", "neutral")
+        direction_cn = {"buy": "🟢 做多", "sell": "🔴 做空", "neutral": "⚪ 中性"}
+        confidence = analysis.get("confidence", 0)
+        signal_strength = analysis.get("signal_strength", "")
+        strength_cn = {"strong": "强", "moderate": "中等", "weak": "弱", "none": "无"}
+        
+        lines.append(f"交易建议: {direction_cn.get(direction, direction)}")
+        lines.append(f"置信度: {confidence:.1%}")
+        lines.append(f"信号强度: {strength_cn.get(signal_strength, signal_strength)}")
+        lines.append(f"看涨概率: {analysis.get('bullish_probability', 0):.1%}")
+        lines.append(f"看跌概率: {analysis.get('bearish_probability', 0):.1%}")
+        lines.append(f"分析市场数: {analysis.get('markets_analyzed', 0)}")
+        lines.append("")
+        
+        # Price levels analysis for today's data
+        if today_only and "markets" in analysis:
+            markets = analysis["markets"]
+            
+            # Extract support and resistance levels
+            support_levels = []
+            resistance_levels = []
+            
+            for m in markets:
+                q = m.get("question", "")
+                yes_prob = m.get("yes_probability", 0)
+                
+                if "ABOVE" in q.upper() or "GREATER" in q.upper():
+                    # Extract price from question
+                    import re
+                    price_match = re.search(r'\$[\d,]+', q)
+                    if price_match:
+                        price_str = price_match.group().replace('$', '').replace(',', '')
+                        try:
+                            price = int(price_str)
+                            if yes_prob > 0.5:
+                                support_levels.append((price, yes_prob))
+                            else:
+                                resistance_levels.append((price, yes_prob))
+                        except:
+                            pass
+            
+            if support_levels or resistance_levels:
+                lines.append("=" * 60)
+                lines.append("价格区间分析")
+                lines.append("=" * 60)
+                lines.append("")
+                
+                if support_levels:
+                    lines.append("✅ 支撑位（守住概率）:")
+                    support_levels.sort(key=lambda x: x[0], reverse=True)
+                    for price, prob in support_levels[:6]:
+                        status = "🟢" if prob > 0.9 else "🟡" if prob > 0.7 else "🟠"
+                        lines.append(f"  {status} ${price:,}: {prob:.1%}")
+                    lines.append("")
+                
+                if resistance_levels:
+                    lines.append("⚠️ 阻力位（突破概率）:")
+                    resistance_levels.sort(key=lambda x: x[0])
+                    for price, prob in resistance_levels[:6]:
+                        status = "🔴" if prob < 0.1 else "🟠" if prob < 0.3 else "🟡"
+                        lines.append(f"  {status} ${price:,}: {prob:.1%}")
+                    lines.append("")
+        
+        lines.append("=" * 60)
+        lines.append("详细预测市场数据")
+        lines.append("=" * 60)
+        lines.append("")
+        
+        # Show all markets with details
+        if "markets" in analysis:
+            markets = analysis["markets"]
+            for i, market in enumerate(markets, 1):
+                question = market.get("question", "")
+                yes_prob = market.get("yes_probability", 0)
+                no_prob = market.get("no_probability", 0)
+                volume = market.get("volume", "0")
+                
+                # Determine direction based on question and probability
+                direction_icon = "🟢" if yes_prob > 0.5 else "🔴" if yes_prob < 0.5 else "⚪"
+                
+                lines.append(f"[{i}] {direction_icon} {question}")
+                lines.append(f"    看涨(YES): {yes_prob:.1%} | 看跌(NO): {no_prob:.1%}")
+                
+                # Format volume
+                try:
+                    vol_num = float(volume)
+                    if vol_num >= 1000000:
+                        vol_str = f"${vol_num/1000000:.2f}M"
+                    elif vol_num >= 1000:
+                        vol_str = f"${vol_num/1000:.2f}K"
+                    else:
+                        vol_str = f"${vol_num:.2f}"
+                    lines.append(f"    交易量: {vol_str}")
+                except:
+                    lines.append(f"    交易量: ${volume}")
+                
+                lines.append("")
+        
+        lines.append("=" * 60)
+        lines.append("市场摘要")
+        lines.append("=" * 60)
+        lines.append(analysis.get("summary", ""))
+        lines.append("")
+    
+    # Multiple timeframes
+    elif "timeframes" in data:
+        lines.append("🎯 多时间周期分析")
+        lines.append("")
+        
+        for timeframe, analysis in data.get("timeframes", {}).items():
+            direction = analysis.get("direction", "neutral")
+            direction_cn = {"buy": "🟢 做多", "sell": "🔴 做空", "neutral": "⚪ 中性"}
+            confidence = analysis.get("confidence", 0)
+            signal_strength = analysis.get("signal_strength", "")
+            strength_cn = {"strong": "强", "moderate": "中等", "weak": "弱", "none": "无"}
+            
+            lines.append(f"【{timeframe.upper()}】")
+            lines.append(f"  建议: {direction_cn.get(direction, direction)} | "
+                        f"置信度: {confidence:.1%} | "
+                        f"信号: {strength_cn.get(signal_strength, signal_strength)}")
+            lines.append(f"  看涨: {analysis.get('bullish_probability', 0):.1%} | "
+                        f"看跌: {analysis.get('bearish_probability', 0):.1%} | "
+                        f"市场数: {analysis.get('markets_analyzed', 0)}")
+            lines.append("")
+        
+        # Overall
+        if "overall" in data:
+            overall = data["overall"]
+            lines.append("=" * 60)
+            lines.append("综合建议")
+            lines.append("=" * 60)
+            lines.append(overall.get("summary", ""))
+            lines.append("")
+    
+    lines.append("=" * 60)
+    lines.append("⚠️  免责声明: 预测市场反映市场情绪，非投资建议")
+    lines.append("=" * 60)
+    
+    return "\n".join(lines)
+
 if __name__ == "__main__":
     import argparse, json
     parser = argparse.ArgumentParser(description="Polymarket crypto prediction client")
@@ -400,6 +568,8 @@ if __name__ == "__main__":
     parser.add_argument("--timeframe", "-t", choices=["15min", "hourly", "4hour", "daily", "weekly", "monthly", "all"], 
                         default="all", help="Specific timeframe to analyze")
     parser.add_argument("--today", action="store_true", help="Only show markets for today's date")
+    parser.add_argument("--format", "-f", choices=["json", "report"], default="report", 
+                        help="Output format: json or report (default: report)")
     parser.add_argument("--debug", action="store_true", help="Show sample markets for debugging")
     args = parser.parse_args()
     
@@ -421,8 +591,13 @@ if __name__ == "__main__":
                     "timeframe": args.timeframe,
                     "analysis": rec["timeframes"][args.timeframe]
                 }
-                print(json.dumps(output, ensure_ascii=False, indent=2))
             else:
-                print(json.dumps({"error": f"No markets found for {args.timeframe} timeframe"}, indent=2))
+                output = {"error": f"No markets found for {args.timeframe} timeframe"}
         else:
-            print(json.dumps(rec, ensure_ascii=False, indent=2))
+            output = rec
+        
+        # Output in requested format
+        if args.format == "json":
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+        else:
+            print(format_report(output))
