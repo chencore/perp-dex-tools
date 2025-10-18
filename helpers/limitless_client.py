@@ -252,10 +252,33 @@ async def debug_markets(symbol: str = "ETH", limit: int = 10):
     async with PolymarketClient() as c:
         markets = await c._get("/markets")
         
+        # First, show what we got
+        total_markets = len(markets) if isinstance(markets, list) else 0
+        data_type = type(markets).__name__
+        
+        if not isinstance(markets, list):
+            return {
+                "error": f"API returned {data_type} instead of list",
+                "data_preview": str(markets)[:500]
+            }
+        
         symbol_upper = symbol.upper()
         matching = []
+        samples_any = []
         
-        for market in markets[:200]:  # Check first 200 markets
+        # Show first few markets regardless of symbol
+        for i, market in enumerate(markets[:20]):
+            if not isinstance(market, dict):
+                continue
+            samples_any.append({
+                "index": i,
+                "question": market.get("question", "")[:100],
+                "active": market.get("active", False),
+                "closed": market.get("closed", True)
+            })
+        
+        # Check all markets for symbol match
+        for market in markets:
             if not isinstance(market, dict):
                 continue
             
@@ -277,9 +300,10 @@ async def debug_markets(symbol: str = "ETH", limit: int = 10):
         
         return {
             "symbol": symbol,
-            "total_checked": min(200, len(markets)),
+            "total_markets": total_markets,
             "matching_markets": len(matching),
-            "samples": matching
+            "first_20_samples": samples_any,
+            "matching_samples": matching[:5]
         }
 
 if __name__ == "__main__":
