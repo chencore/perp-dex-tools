@@ -267,7 +267,9 @@ async def demo(symbol: str = "ETH"):
 async def debug_markets(symbol: str = "ETH", limit: int = 10):
     """Debug function to show sample markets for inspection."""
     async with PolymarketClient() as c:
-        markets = await c._get("/markets")
+        # Fetch active markets
+        params = {"closed": "false", "limit": 100, "offset": 0}
+        markets = await c._get("/markets", params)
         
         # First, show what we got
         total_markets = len(markets) if isinstance(markets, list) else 0
