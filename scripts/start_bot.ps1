@@ -5,7 +5,10 @@ Param(
   [double]$TakeProfit = 0.02,
   [int]$MaxOrders = 40,
   [int]$WaitTime = 450,
-  [double]$StopPrice = 5000
+  [double]$StopPrice = 5000,
+  [ValidateSet('buy','sell')][string]$Direction = 'buy',
+  [double]$GridStep = -100,
+  [double]$PausePrice = -1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,7 +51,10 @@ $argsList = @(
   "--take-profit", $TakeProfit,
   "--max-orders", $MaxOrders,
   "--wait-time", $WaitTime,
-  "--stop-price", $StopPrice
+  "--stop-price", $StopPrice,
+  "--direction", $Direction,
+  "--grid-step", $GridStep,
+  "--pause-price", $PausePrice
 )
 
 # Start in background and redirect stdout/stderr to the same log

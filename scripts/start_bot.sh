@@ -29,6 +29,10 @@ TAKE_PROFIT="${4:-0.02}"
 MAX_ORDERS="${5:-40}"
 WAIT_TIME="${6:-450}"
 STOP_PRICE="${7:-5000}"
+# Optional extended params
+DIRECTION="${8:-buy}"
+GRID_STEP="${9:--100}"
+PAUSE_PRICE="${10:--1}"
 
 # Load .env if exists
 if [[ -f .env ]]; then
@@ -45,7 +49,10 @@ CMD=(python3 runbot.py \
   --take-profit "$TAKE_PROFIT" \
   --max-orders "$MAX_ORDERS" \
   --wait-time "$WAIT_TIME" \
-  --stop-price "$STOP_PRICE")
+  --stop-price "$STOP_PRICE" \
+  --direction "$DIRECTION" \
+  --grid-step "$GRID_STEP" \
+  --pause-price "$PAUSE_PRICE")
 
 # Start in background with nohup, redirect stdout/stderr to log
 nohup "${CMD[@]}" >>"$LOG_FILE" 2>&1 &
