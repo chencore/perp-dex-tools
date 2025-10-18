@@ -43,33 +43,48 @@ class PolymarketClient:
         Returns:
             Dict with timeframes as keys and lists of relevant markets as values
         """
-        # First, try to get crypto tag ID
-        # Common crypto tag IDs (may need to be updated)
-        # We'll fetch markets with crypto-related tags
+        # Use /events/pagination endpoint with crypto tag
+        # tag_slug options: crypto, economy, etc.
         max_retries = 3
-        all_markets = []
+        all_events = []
         
         for attempt in range(max_retries):
             try:
-                # Strategy: Fetch markets and filter by crypto keywords
-                # Polymarket's crypto markets usually have specific patterns
-                for offset in [0, 100, 200]:
+                # Fetch crypto events with pagination
+                for offset in [0, 20, 40, 60, 80, 100]:
                     params = {
+                        "limit": 20,
+                        "active": "true",
+                        "archived": "false",
+                        "tag_slug": "crypto",
                         "closed": "false",
-                        "limit": 100,
+                        "order": "volume24hr",
+                        "ascending": "false",
                         "offset": offset
                     }
-                    page_markets = await self._get("/markets", params)
-                    if isinstance(page_markets, list):
-                        all_markets.extend(page_markets)
-                        if len(page_markets) < 100:
-                            break  # No more pages
+                    response = await self._get("/events/pagination", params)
+                    
+                    # Response format: {"data": [...events...], "count": total}
+                    if isinstance(response, dict) and "data" in response:
+                        events = response["data"]
+                        if isinstance(events, list):
+                            all_events.extend(events)
+                            if len(events) < 20:
+                                break  # No more pages
                     await asyncio.sleep(0.3)  # Rate limiting
                 break
             except asyncio.TimeoutError:
                 if attempt == max_retries - 1:
                     raise
                 await asyncio.sleep(2)
+        
+        # Extract markets from events
+        all_markets = []
+        for event in all_events:
+            if isinstance(event, dict) and "markets" in event:
+                markets_in_event = event.get("markets", [])
+                if isinstance(markets_in_event, list):
+                    all_markets.extend(markets_in_event)
         
         markets = all_markets
         
@@ -163,14 +178,24 @@ class PolymarketClient:
             outcomes = market.get("outcomes", "")
             outcome_prices = market.get("outcomePrices", "")
             
-            # Parse outcome prices (format: "0.52,0.48" for YES,NO)
+            # Parse outcome prices 
+            # Format can be: "0.52,0.48" or "[\"0.52\", \"0.48\"]" or list
             try:
-                if outcome_prices and isinstance(outcome_prices, str):
-                    prices = [float(p) for p in outcome_prices.split(",")]
-                    yes_price = prices[0] if len(prices) > 0 else 0.5
+                if isinstance(outcome_prices, list):
+                    yes_price = float(outcome_prices[0]) if len(outcome_prices) > 0 else 0.5
+                elif isinstance(outcome_prices, str):
+                    # Try JSON array format first
+                    if outcome_prices.startswith('['):
+                        import json
+                        prices = json.loads(outcome_prices)
+                        yes_price = float(prices[0]) if len(prices) > 0 else 0.5
+                    else:
+                        # Try comma-separated format
+                        prices = [float(p.strip()) for p in outcome_prices.split(",")]
+                        yes_price = prices[0] if len(prices) > 0 else 0.5
                 else:
                     yes_price = 0.5
-            except:
+            except Exception as e:
                 yes_price = 0.5
             
             # Determine if this is bullish or bearish signal
