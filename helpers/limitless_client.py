@@ -43,16 +43,33 @@ class PolymarketClient:
         Returns:
             Dict with timeframes as keys and lists of relevant markets as values
         """
-        # Fetch all markets with retry
+        # Fetch active markets with pagination (limit=100 per page)
+        # Use closed=false to get only active markets
         max_retries = 3
+        all_markets = []
+        
         for attempt in range(max_retries):
             try:
-                markets = await self._get("/markets")
+                # Fetch multiple pages to get more markets
+                for offset in [0, 100, 200]:
+                    params = {
+                        "closed": "false",
+                        "limit": 100,
+                        "offset": offset
+                    }
+                    page_markets = await self._get("/markets", params)
+                    if isinstance(page_markets, list):
+                        all_markets.extend(page_markets)
+                        if len(page_markets) < 100:
+                            break  # No more pages
+                    await asyncio.sleep(0.5)  # Rate limiting
                 break
             except asyncio.TimeoutError:
                 if attempt == max_retries - 1:
                     raise
                 await asyncio.sleep(2)
+        
+        markets = all_markets
         
         # Filter and categorize markets by timeframe
         symbol_upper = symbol.upper()
