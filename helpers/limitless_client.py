@@ -6,7 +6,7 @@ from datetime import datetime
 import aiohttp
 
 DEFAULT_API_URL = os.getenv("POLYMARKET_API_URL", "https://gamma-api.polymarket.com")
-DEFAULT_TIMEOUT = int(os.getenv("POLYMARKET_TIMEOUT", "10"))
+DEFAULT_TIMEOUT = int(os.getenv("POLYMARKET_TIMEOUT", "30"))
 
 class PolymarketClient:
     """Client for Polymarket Gamma API to fetch crypto prediction markets."""
@@ -32,24 +32,37 @@ class PolymarketClient:
             resp.raise_for_status()
             return await resp.json()
 
-    async def fetch_crypto_markets(self, symbol: str) -> List[Dict[str, Any]]:
+    async def fetch_crypto_markets(self, symbol: str) -> Dict[str, List[Dict[str, Any]]]:
         """
         Fetch active crypto prediction markets for the given symbol from Polymarket.
-        Returns markets related to price movements (hourly/daily predictions).
+        Returns markets categorized by timeframe (hourly, 4h, daily, weekly).
         
         Args:
             symbol: Crypto symbol like 'ETH', 'BTC', 'SOL'
         
         Returns:
-            List of relevant market data
+            Dict with timeframes as keys and lists of relevant markets as values
         """
-        # Fetch all markets
-        markets = await self._get("/markets")
+        # Fetch all markets with retry
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                markets = await self._get("/markets")
+                break
+            except asyncio.TimeoutError:
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(2)
         
-        # Filter for crypto-related markets matching the symbol
-        # Look for markets with the symbol in question/title and active status
+        # Filter and categorize markets by timeframe
         symbol_upper = symbol.upper()
-        relevant_markets = []
+        categorized = {
+            "hourly": [],
+            "4hour": [],
+            "daily": [],
+            "weekly": [],
+            "other": []
+        }
         
         for market in markets:
             if not isinstance(market, dict):
@@ -60,12 +73,25 @@ class PolymarketClient:
             closed = market.get("closed", True)
             
             # Filter: active, not closed, contains symbol, and likely price-related
-            if (active and not closed and 
-                symbol_upper in question and
-                any(kw in question for kw in ["PRICE", "ABOVE", "BELOW", "REACH", "HIGHER", "LOWER"])):
-                relevant_markets.append(market)
+            if not (active and not closed and symbol_upper in question):
+                continue
+            
+            if not any(kw in question for kw in ["PRICE", "ABOVE", "BELOW", "REACH", "HIGHER", "LOWER", "CLOSE"]):
+                continue
+            
+            # Classify by timeframe based on question keywords
+            if any(kw in question for kw in ["HOUR", "HOURLY", "1H", "1 HOUR"]):
+                categorized["hourly"].append(market)
+            elif any(kw in question for kw in ["4 HOUR", "4H", "4-HOUR"]):
+                categorized["4hour"].append(market)
+            elif any(kw in question for kw in ["DAY", "DAILY", "24H", "24 HOUR", "TODAY", "TOMORROW"]):
+                categorized["daily"].append(market)
+            elif any(kw in question for kw in ["WEEK", "WEEKLY", "7 DAY"]):
+                categorized["weekly"].append(market)
+            else:
+                categorized["other"].append(market)
         
-        return relevant_markets
+        return categorized
 
     @staticmethod
     def analyze_markets(markets: List[Dict[str, Any]], symbol: str) -> Dict[str, Any]:
@@ -96,7 +122,7 @@ class PolymarketClient:
                 "markets_analyzed": 0,
                 "bullish_probability": 0.5,
                 "bearish_probability": 0.5,
-                "summary": f"No active prediction markets found for {symbol}",
+                "summary": f"未找到 {symbol} 的活跃预测市场",
                 "markets": []
             }
         
@@ -168,9 +194,13 @@ class PolymarketClient:
         else:
             signal_strength = "weak"
         
-        summary = f"Analyzed {len(markets)} markets for {symbol}. "
-        summary += f"Bullish probability: {avg_bullish:.1%}, Bearish probability: {avg_bearish:.1%}. "
-        summary += f"Recommendation: {direction.upper()} with {signal_strength} signal."
+        # 中文方向映射
+        direction_cn = {"buy": "做多", "sell": "做空", "neutral": "中性"}
+        strength_cn = {"strong": "强", "moderate": "中等", "weak": "弱", "none": "无"}
+        
+        summary = f"分析了 {len(markets)} 个 {symbol} 预测市场。"
+        summary += f"看涨概率: {avg_bullish:.1%}，看跌概率: {avg_bearish:.1%}。"
+        summary += f"建议: {direction_cn.get(direction, direction)} ({strength_cn.get(signal_strength, signal_strength)}信号)"
         
         return {
             "direction": direction,
@@ -184,16 +214,60 @@ class PolymarketClient:
         }
 
 async def demo(symbol: str = "ETH"):
-    """Demo function to fetch and analyze Polymarket crypto predictions."""
+    """Demo function to fetch and analyze Polymarket crypto predictions by timeframe."""
     async with PolymarketClient() as c:
-        markets = await c.fetch_crypto_markets(symbol)
-        rec = c.analyze_markets(markets, symbol)
-        return rec
+        categorized_markets = await c.fetch_crypto_markets(symbol)
+        
+        results = {
+            "symbol": symbol,
+            "timestamp": datetime.now().isoformat(),
+            "timeframes": {}
+        }
+        
+        # Analyze each timeframe
+        for timeframe, markets in categorized_markets.items():
+            if markets:  # Only analyze if there are markets
+                analysis = c.analyze_markets(markets, symbol)
+                results["timeframes"][timeframe] = analysis
+        
+        # Generate overall recommendation based on all timeframes
+        all_markets = []
+        for markets in categorized_markets.values():
+            all_markets.extend(markets)
+        
+        if all_markets:
+            results["overall"] = c.analyze_markets(all_markets, symbol)
+        else:
+            results["overall"] = {
+                "direction": "neutral",
+                "confidence": 0.0,
+                "signal_strength": "none",
+                "summary": f"未找到 {symbol} 的活跃预测市场"
+            }
+        
+        return results
 
 if __name__ == "__main__":
     import argparse, json
     parser = argparse.ArgumentParser(description="Polymarket crypto prediction client")
     parser.add_argument("--symbol", "-s", default="ETH", help="Crypto symbol (ETH, BTC, SOL, etc.)")
+    parser.add_argument("--timeframe", "-t", choices=["hourly", "4hour", "daily", "weekly", "all"], 
+                        default="all", help="Specific timeframe to analyze")
     args = parser.parse_args()
+    
     rec = asyncio.run(demo(args.symbol))
-    print(json.dumps(rec, ensure_ascii=False, indent=2))
+    
+    # Filter output by timeframe if specified
+    if args.timeframe != "all" and "timeframes" in rec:
+        if args.timeframe in rec["timeframes"]:
+            output = {
+                "symbol": rec["symbol"],
+                "timestamp": rec["timestamp"],
+                "timeframe": args.timeframe,
+                "analysis": rec["timeframes"][args.timeframe]
+            }
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+        else:
+            print(json.dumps({"error": f"No markets found for {args.timeframe} timeframe"}, indent=2))
+    else:
+        print(json.dumps(rec, ensure_ascii=False, indent=2))
