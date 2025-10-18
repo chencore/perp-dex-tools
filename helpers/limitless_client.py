@@ -247,27 +247,69 @@ async def demo(symbol: str = "ETH"):
         
         return results
 
+async def debug_markets(symbol: str = "ETH", limit: int = 10):
+    """Debug function to show sample markets for inspection."""
+    async with PolymarketClient() as c:
+        markets = await c._get("/markets")
+        
+        symbol_upper = symbol.upper()
+        matching = []
+        
+        for market in markets[:200]:  # Check first 200 markets
+            if not isinstance(market, dict):
+                continue
+            
+            question = market.get("question", "")
+            active = market.get("active", False)
+            closed = market.get("closed", True)
+            
+            # Show markets that contain the symbol
+            if symbol_upper in question.upper():
+                matching.append({
+                    "question": question,
+                    "active": active,
+                    "closed": closed,
+                    "volume": market.get("volume", "0"),
+                    "outcomePrices": market.get("outcomePrices", "")
+                })
+                if len(matching) >= limit:
+                    break
+        
+        return {
+            "symbol": symbol,
+            "total_checked": min(200, len(markets)),
+            "matching_markets": len(matching),
+            "samples": matching
+        }
+
 if __name__ == "__main__":
     import argparse, json
     parser = argparse.ArgumentParser(description="Polymarket crypto prediction client")
     parser.add_argument("--symbol", "-s", default="ETH", help="Crypto symbol (ETH, BTC, SOL, etc.)")
     parser.add_argument("--timeframe", "-t", choices=["hourly", "4hour", "daily", "weekly", "all"], 
                         default="all", help="Specific timeframe to analyze")
+    parser.add_argument("--debug", action="store_true", help="Show sample markets for debugging")
     args = parser.parse_args()
     
-    rec = asyncio.run(demo(args.symbol))
-    
-    # Filter output by timeframe if specified
-    if args.timeframe != "all" and "timeframes" in rec:
-        if args.timeframe in rec["timeframes"]:
-            output = {
-                "symbol": rec["symbol"],
-                "timestamp": rec["timestamp"],
-                "timeframe": args.timeframe,
-                "analysis": rec["timeframes"][args.timeframe]
-            }
-            print(json.dumps(output, ensure_ascii=False, indent=2))
-        else:
-            print(json.dumps({"error": f"No markets found for {args.timeframe} timeframe"}, indent=2))
+    if args.debug:
+        # Debug mode: show sample markets
+        debug_result = asyncio.run(debug_markets(args.symbol, limit=20))
+        print(json.dumps(debug_result, ensure_ascii=False, indent=2))
     else:
-        print(json.dumps(rec, ensure_ascii=False, indent=2))
+        # Normal mode
+        rec = asyncio.run(demo(args.symbol))
+        
+        # Filter output by timeframe if specified
+        if args.timeframe != "all" and "timeframes" in rec:
+            if args.timeframe in rec["timeframes"]:
+                output = {
+                    "symbol": rec["symbol"],
+                    "timestamp": rec["timestamp"],
+                    "timeframe": args.timeframe,
+                    "analysis": rec["timeframes"][args.timeframe]
+                }
+                print(json.dumps(output, ensure_ascii=False, indent=2))
+            else:
+                print(json.dumps({"error": f"No markets found for {args.timeframe} timeframe"}, indent=2))
+        else:
+            print(json.dumps(rec, ensure_ascii=False, indent=2))
