@@ -8,7 +8,8 @@ Param(
   [double]$StopPrice = 5000,
   [ValidateSet('buy','sell')][string]$Direction = 'buy',
   [double]$GridStep = -100,
-  [double]$PausePrice = -1
+  [double]$PausePrice = -1,
+  [double]$StopLoss = -1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,7 +55,8 @@ $argsList = @(
   "--stop-price", $StopPrice,
   "--direction", $Direction,
   "--grid-step", $GridStep,
-  "--pause-price", $PausePrice
+  "--pause-price", $PausePrice,
+  "--stop-loss", $StopLoss
 )
 
 # Start in background and redirect stdout/stderr to the same log

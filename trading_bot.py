@@ -31,6 +31,7 @@ class TradingConfig:
     grid_step: Decimal
     stop_price: Decimal
     pause_price: Decimal
+    stop_loss: Decimal
     boost_mode: bool
 
     @property
@@ -457,6 +458,17 @@ class TradingBot:
         if best_bid <= 0 or best_ask <= 0 or best_bid >= best_ask:
             raise ValueError("No bid/ask data available")
 
+        # Stop-Loss: conventional semantics
+        # - Long (buy): stop if price drops to/below stop_loss
+        # - Short (sell): stop if price rises to/above stop_loss
+        if self.config.stop_loss != -1:
+            if self.config.direction == "buy":
+                if best_bid <= self.config.stop_loss:
+                    stop_trading = True
+            elif self.config.direction == "sell":
+                if best_ask >= self.config.stop_loss:
+                    stop_trading = True
+
         if self.config.stop_price != -1:
             if self.config.direction == "buy":
                 if best_ask >= self.config.stop_price:
@@ -505,6 +517,7 @@ class TradingBot:
             self.logger.log(f"Grid Step: {self.config.grid_step}%", "INFO")
             self.logger.log(f"Stop Price: {self.config.stop_price}", "INFO")
             self.logger.log(f"Pause Price: {self.config.pause_price}", "INFO")
+            self.logger.log(f"Stop Loss: {self.config.stop_loss}", "INFO")
             self.logger.log(f"Boost Mode: {self.config.boost_mode}", "INFO")
             self.logger.log("=============================", "INFO")
 

@@ -33,6 +33,7 @@ STOP_PRICE="${7:-5000}"
 DIRECTION="${8:-buy}"
 GRID_STEP="${9:--100}"
 PAUSE_PRICE="${10:--1}"
+STOP_LOSS="${11:--1}"
 
 # Load .env if exists
 if [[ -f .env ]]; then
@@ -52,7 +53,8 @@ CMD=(python3 runbot.py \
   --stop-price "$STOP_PRICE" \
   --direction "$DIRECTION" \
   --grid-step "$GRID_STEP" \
-  --pause-price "$PAUSE_PRICE")
+  --pause-price "$PAUSE_PRICE" \
+  --stop-loss "$STOP_LOSS")
 
 # Start in background with nohup, redirect stdout/stderr to log
 nohup "${CMD[@]}" >>"$LOG_FILE" 2>&1 &
