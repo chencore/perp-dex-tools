@@ -497,6 +497,7 @@ def format_report(data: dict) -> str:
                 yes_prob = market.get("yes_probability", 0)
                 no_prob = market.get("no_probability", 0)
                 volume = market.get("volume", "0")
+                end_date = market.get("end_date", "")
                 
                 # Determine direction based on question and probability
                 direction_icon = "🟢" if yes_prob > 0.5 else "🔴" if yes_prob < 0.5 else "⚪"
@@ -516,6 +517,16 @@ def format_report(data: dict) -> str:
                     lines.append(f"    交易量: {vol_str}")
                 except:
                     lines.append(f"    交易量: ${volume}")
+                
+                # Format end date
+                if end_date:
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                        date_str = dt.strftime("%Y-%m-%d %H:%M UTC")
+                        lines.append(f"    截止时间: {date_str}")
+                    except:
+                        lines.append(f"    截止时间: {end_date}")
                 
                 lines.append("")
         
