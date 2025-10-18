@@ -273,14 +273,39 @@ class PolymarketClient:
             "markets": analyzed
         }
 
-async def demo(symbol: str = "ETH"):
-    """Demo function to fetch and analyze Polymarket crypto predictions by timeframe."""
+async def demo(symbol: str = "ETH", today_only: bool = False):
+    """Demo function to fetch and analyze Polymarket crypto predictions by timeframe.
+    
+    Args:
+        symbol: Crypto symbol
+        today_only: If True, only include markets for today's date
+    """
     async with PolymarketClient() as c:
         categorized_markets = await c.fetch_crypto_markets(symbol)
+        
+        # Filter for today only if requested
+        if today_only:
+            from datetime import datetime
+            today = datetime.now()
+            today_str = today.strftime("%B %d").upper()  # e.g., "OCTOBER 18"
+            today_str_alt = today.strftime("%B %-d").upper() if hasattr(today, 'strftime') else today_str  # "OCTOBER 18" without leading zero
+            
+            filtered_markets = {}
+            for timeframe, markets in categorized_markets.items():
+                today_markets = []
+                for market in markets:
+                    question = market.get("question", "").upper()
+                    # Check if question contains today's date
+                    if today_str in question or today_str.replace(" 0", " ") in question:
+                        today_markets.append(market)
+                if today_markets:
+                    filtered_markets[timeframe] = today_markets
+            categorized_markets = filtered_markets
         
         results = {
             "symbol": symbol,
             "timestamp": datetime.now().isoformat(),
+            "today_only": today_only,
             "timeframes": {}
         }
         
@@ -374,6 +399,7 @@ if __name__ == "__main__":
     parser.add_argument("--symbol", "-s", default="ETH", help="Crypto symbol (ETH, BTC, SOL, etc.)")
     parser.add_argument("--timeframe", "-t", choices=["15min", "hourly", "4hour", "daily", "weekly", "monthly", "all"], 
                         default="all", help="Specific timeframe to analyze")
+    parser.add_argument("--today", action="store_true", help="Only show markets for today's date")
     parser.add_argument("--debug", action="store_true", help="Show sample markets for debugging")
     args = parser.parse_args()
     
@@ -383,7 +409,7 @@ if __name__ == "__main__":
         print(json.dumps(debug_result, ensure_ascii=False, indent=2))
     else:
         # Normal mode
-        rec = asyncio.run(demo(args.symbol))
+        rec = asyncio.run(demo(args.symbol, today_only=args.today))
         
         # Filter output by timeframe if specified
         if args.timeframe != "all" and "timeframes" in rec:
@@ -391,6 +417,7 @@ if __name__ == "__main__":
                 output = {
                     "symbol": rec["symbol"],
                     "timestamp": rec["timestamp"],
+                    "today_only": rec.get("today_only", False),
                     "timeframe": args.timeframe,
                     "analysis": rec["timeframes"][args.timeframe]
                 }
