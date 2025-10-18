@@ -43,14 +43,16 @@ class PolymarketClient:
         Returns:
             Dict with timeframes as keys and lists of relevant markets as values
         """
-        # Fetch active markets with pagination (limit=100 per page)
-        # Use closed=false to get only active markets
+        # First, try to get crypto tag ID
+        # Common crypto tag IDs (may need to be updated)
+        # We'll fetch markets with crypto-related tags
         max_retries = 3
         all_markets = []
         
         for attempt in range(max_retries):
             try:
-                # Fetch multiple pages to get more markets
+                # Strategy: Fetch markets and filter by crypto keywords
+                # Polymarket's crypto markets usually have specific patterns
                 for offset in [0, 100, 200]:
                     params = {
                         "closed": "false",
@@ -62,7 +64,7 @@ class PolymarketClient:
                         all_markets.extend(page_markets)
                         if len(page_markets) < 100:
                             break  # No more pages
-                    await asyncio.sleep(0.5)  # Rate limiting
+                    await asyncio.sleep(0.3)  # Rate limiting
                 break
             except asyncio.TimeoutError:
                 if attempt == max_retries - 1:
@@ -74,10 +76,12 @@ class PolymarketClient:
         # Filter and categorize markets by timeframe
         symbol_upper = symbol.upper()
         categorized = {
+            "15min": [],
             "hourly": [],
             "4hour": [],
             "daily": [],
             "weekly": [],
+            "monthly": [],
             "other": []
         }
         
@@ -89,23 +93,30 @@ class PolymarketClient:
             active = market.get("active", False)
             closed = market.get("closed", True)
             
-            # Filter: active, not closed, contains symbol, and likely price-related
+            # Filter: active, not closed, contains symbol
             if not (active and not closed and symbol_upper in question):
                 continue
             
-            if not any(kw in question for kw in ["PRICE", "ABOVE", "BELOW", "REACH", "HIGHER", "LOWER", "CLOSE"]):
+            # More flexible filtering - include "HIT", "WILL", etc.
+            if not any(kw in question for kw in ["PRICE", "ABOVE", "BELOW", "REACH", "HIGHER", "LOWER", "CLOSE", "HIT", "WILL"]):
                 continue
             
             # Classify by timeframe based on question keywords
-            if any(kw in question for kw in ["HOUR", "HOURLY", "1H", "1 HOUR"]):
+            # Match Polymarket's categories: 15 Min, Hourly, 4 Hour, Daily, Weekly, Monthly
+            if any(kw in question for kw in ["15 MIN", "15MIN", "15-MIN"]):
+                categorized["15min"].append(market)
+            elif any(kw in question for kw in ["HOUR", "HOURLY", "1H", "1 HOUR", "NEXT HOUR"]) and "4" not in question:
                 categorized["hourly"].append(market)
             elif any(kw in question for kw in ["4 HOUR", "4H", "4-HOUR"]):
                 categorized["4hour"].append(market)
-            elif any(kw in question for kw in ["DAY", "DAILY", "24H", "24 HOUR", "TODAY", "TOMORROW"]):
+            elif any(kw in question for kw in ["DAY", "DAILY", "24H", "24 HOUR", "TODAY", "TOMORROW"]) and "OCTOBER" not in question:
                 categorized["daily"].append(market)
-            elif any(kw in question for kw in ["WEEK", "WEEKLY", "7 DAY"]):
+            elif any(kw in question for kw in ["WEEK", "WEEKLY", "7 DAY", "THIS WEEK", "NEXT WEEK"]):
                 categorized["weekly"].append(market)
+            elif any(kw in question for kw in ["MONTH", "MONTHLY", "NOVEMBER", "DECEMBER", "JANUARY"]):
+                categorized["monthly"].append(market)
             else:
+                # Longer-term or specific date predictions
                 categorized["other"].append(market)
         
         return categorized
@@ -329,7 +340,7 @@ if __name__ == "__main__":
     import argparse, json
     parser = argparse.ArgumentParser(description="Polymarket crypto prediction client")
     parser.add_argument("--symbol", "-s", default="ETH", help="Crypto symbol (ETH, BTC, SOL, etc.)")
-    parser.add_argument("--timeframe", "-t", choices=["hourly", "4hour", "daily", "weekly", "all"], 
+    parser.add_argument("--timeframe", "-t", choices=["15min", "hourly", "4hour", "daily", "weekly", "monthly", "all"], 
                         default="all", help="Specific timeframe to analyze")
     parser.add_argument("--debug", action="store_true", help="Show sample markets for debugging")
     args = parser.parse_args()
