@@ -11,22 +11,43 @@ cd "$REPO_ROOT"
 
 echo "Scanning for bot processes (runbot.py) under: $REPO_ROOT"
 
-# Find PIDs whose cmdline includes both repo root and runbot.py
-PIDS=$(ps aux | grep -E "runbot\.py" | grep -F "$REPO_ROOT" | grep -v grep | awk '{print $2}' || true)
+# Collect candidate PIDs by matching command line
+mapfile -t CANDIDATES < <(pgrep -af "python[^ ]* .*runbot\.py" | awk '{print $1}' || true)
 
-if [[ -z "${PIDS:-}" ]]; then
-  echo "No matching bot processes found."
+if [[ ${#CANDIDATES[@]} -eq 0 ]]; then
+  echo "No matching bot processes found by name."
 else
-  for pid in $PIDS; do
-    echo "Stopping PID=$pid"
-    kill "$pid" 2>/dev/null || true
+  TO_KILL=()
+  for pid in "${CANDIDATES[@]}"; do
+    # Prefer Linux: verify process CWD belongs to this repo via /proc/<pid>/cwd
+    if [[ -e "/proc/$pid/cwd" ]]; then
+      cwd_path="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || echo '')"
+      if [[ -n "$cwd_path" && "$cwd_path" == "$REPO_ROOT"* ]]; then
+        TO_KILL+=("$pid")
+      fi
+    else
+      # macOS fallback: no /proc. If cmdline contains runbot.py, accept (best-effort).
+      TO_KILL+=("$pid")
+    fi
   done
-  # Give them a moment, then force kill remaining
-  sleep 1
-  REMAIN=$(ps aux | awk '{print $2}' | grep -x -E "$(echo $PIDS | sed 's/ /|/g')" || true)
-  if [[ -n "${REMAIN:-}" ]]; then
-    echo "Force stopping: $REMAIN"
-    kill -9 $REMAIN 2>/dev/null || true
+
+  if [[ ${#TO_KILL[@]} -eq 0 ]]; then
+    echo "No processes matched within repo root ($REPO_ROOT)."
+  else
+    echo "Stopping PIDs: ${TO_KILL[*]}"
+    kill "${TO_KILL[@]}" 2>/dev/null || true
+    sleep 1
+    # Force kill any survivors
+    SURVIVORS=()
+    for pid in "${TO_KILL[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        SURVIVORS+=("$pid")
+      fi
+    done
+    if [[ ${#SURVIVORS[@]} -gt 0 ]]; then
+      echo "Force stopping: ${SURVIVORS[*]}"
+      kill -9 "${SURVIVORS[@]}" 2>/dev/null || true
+    fi
   fi
 fi
 
