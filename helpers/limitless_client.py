@@ -118,17 +118,24 @@ class PolymarketClient:
             
             # Classify by timeframe based on question keywords
             # Match Polymarket's categories: 15 Min, Hourly, 4 Hour, Daily, Weekly, Monthly
+            import re
+            
             if any(kw in question for kw in ["15 MIN", "15MIN", "15-MIN"]):
                 categorized["15min"].append(market)
             elif any(kw in question for kw in ["HOUR", "HOURLY", "1H", "1 HOUR", "NEXT HOUR"]) and "4" not in question:
                 categorized["hourly"].append(market)
             elif any(kw in question for kw in ["4 HOUR", "4H", "4-HOUR"]):
                 categorized["4hour"].append(market)
-            elif any(kw in question for kw in ["DAY", "DAILY", "24H", "24 HOUR", "TODAY", "TOMORROW"]) and "OCTOBER" not in question:
+            # Daily: specific dates like "October 18" or keywords like "today/tomorrow"
+            elif (re.search(r'OCTOBER \d+', question) or 
+                  re.search(r'\d+-\d+', question) or  # "13-19"
+                  any(kw in question for kw in ["DAY", "DAILY", "24H", "24 HOUR", "TODAY", "TOMORROW"])):
                 categorized["daily"].append(market)
             elif any(kw in question for kw in ["WEEK", "WEEKLY", "7 DAY", "THIS WEEK", "NEXT WEEK"]):
                 categorized["weekly"].append(market)
-            elif any(kw in question for kw in ["MONTH", "MONTHLY", "NOVEMBER", "DECEMBER", "JANUARY"]):
+            # Monthly: "by December 31" or month names
+            elif (re.search(r'BY (DECEMBER|NOVEMBER|JANUARY)', question) or
+                  any(kw in question for kw in ["MONTH", "MONTHLY"])):
                 categorized["monthly"].append(market)
             else:
                 # Longer-term or specific date predictions
